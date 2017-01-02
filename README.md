@@ -84,8 +84,13 @@ translating it into e.g. Python would get us 80% of the way there.
 # Resources and related work
 
 [How to Write a New Git Protocol](https://rovaughn.github.io/2015-2-9.html)
+
 [Mastering Git Subtrees](https://medium.com/@porteneuve/mastering-git-subtrees-943d29a798ec#.us0rtft89)
+
 [git-subtree docs](https://raw.githubusercontent.com/git/git/master/contrib/subtree/git-subtree.txt)
+
 [git-subhistory](https://github.com/laughinghan/git-subhistory)
+
 [git-subrepo](https://github.com/ingydotnet/git-subrepo)
+
 [Which commit has this blob?](http://stackoverflow.com/questions/223678/which-commit-has-this-blob)
