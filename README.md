@@ -9,6 +9,18 @@ interfere with normal git functionality. Just as a failing escalator becomes
 stairs, any issue with `git-remote-subtree` should yield a monorepo that
 continues to work perfectly, with no loss of data or commits.
 
+# Project status
+
+There is no working implementation yet. `git-remote-subtree` currently just
+mirrors a remote repository in a hidden bare repo and performs pushes and pulls
+indirectly through it.
+
+The next step is to add support for rewriting paths and basing the rewritten
+commits on top of a specific parent commit provided by the user. This will be
+sufficient to allow pulling as long as no new commits are added to the super
+repo, and because it's deterministic, it won't require scanning the super repo
+for matching commits.
+
 # Proposed approach
 
 Say the user sets up a remote like so:

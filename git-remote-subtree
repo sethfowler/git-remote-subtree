@@ -1,0 +1,238 @@
+#!/usr/bin/env python
+
+from __future__ import print_function
+import os
+import re
+import subprocess
+import sys
+
+class remote_subtree_state:
+    def __init__(self, remote, url, git_dir):
+        self.remote = remote
+        self.url = url
+        self.remote_url = url
+        self.data_dir = os.path.join(git_dir, 'remote-subtree', remote)
+        self.remote_dir = os.path.join(self.data_dir, remote + '.git')
+        self.refspec = 'refs/heads/*:refs/remote-subtree/{}/*'.format(remote)
+        self.local_marks = os.path.join(self.data_dir, 'local.marks')
+        self.remote_marks = os.path.join(self.data_dir, 'remote.marks')
+        self.options = {
+            'verbosity': 1,
+            'progress': True,
+            'dryrun': False,
+            'force': False,
+            'cloning': False
+        }
+
+def touch(filename):
+    with open(filename, 'a'):
+        pass
+
+def log(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
+
+def respond(*args, **kwargs):
+    log('remote-subtree>', *args, **kwargs)
+    print(*args, file=sys.stdout, **kwargs)
+    sys.stdout.flush()
+
+def run_git(args):
+    command = ['git']
+    command.extend(args)
+    log('run:', command)
+    try:
+        return subprocess.check_output(command, stderr=subprocess.STDOUT).rstrip()
+    except subprocess.CalledProcessError as error:
+        log('command failed:', command)
+        log(error.output)
+        sys.exit(error.returncode)
+
+def pass_thru_git(args):
+    command = ['git']
+    command.extend(args)
+    log('pass thru:', command)
+    try:
+        return subprocess.check_call(command)
+    except subprocess.CalledProcessError as error:
+        log('command failed:', command)
+        sys.exit(error.returncode)
+
+def get_refs():
+    raw_refs = run_git(['for-each-ref', "--format=%(refname) %(objectname)"])
+
+    refs = {}
+    for line in iter(raw_refs.splitlines()):
+        ref = re.match('(?P<name>.+) (?P<sha>.+)', line).groupdict()
+        refs[ref['name']] = ref['sha']
+
+    return refs
+
+def handle_capabilities(state):
+    respond('import')
+    respond('export')
+    respond('option')
+    respond('refspec', state.refspec)
+    respond('*import-marks', state.local_marks)
+    respond('*export-marks', state.local_marks)
+    respond()
+
+def handle_option(state, command):
+    option = re.match('option (?P<key>\w+) (?P<value>\w+)', command).groupdict()
+    if option['key'] == 'verbosity':
+        state.options['verbosity'] = int(option['value'])
+    elif option['key'] == 'progress':
+        state.options['progress'] = True if option['value'] == 'true' else False
+    elif option['key'] == 'dry-run':
+        state.options['dry-run'] = True if option['value'] == 'true' else False
+    elif option['key'] == 'force':
+        state.options['force'] = True if option['value'] == 'true' else False
+    elif option['key'] == 'cloning':
+        state.options['cloning'] = True if option['value'] == 'true' else False
+    else:
+        respond('unsupported')
+        return
+
+    respond('ok')
+
+def handle_list(state, command):
+    # The list command can be 'list' or 'list for-push'; this is just a hint
+    # about what the list will be used for. We don't care about the
+    # distinction at the moment, so we ignore the `command` argument.
+    pass_thru_git(['for-each-ref', "--format=? %(refname)", 'refs/heads/'])
+    head = run_git(['symbolic-ref', 'HEAD'])
+    respond('@{} HEAD'.format(head))
+    respond()
+
+def handle_import(state, import_commands):
+    respond('feature import-marks={}'.format(state.local_marks))
+    respond('feature export-marks={}'.format(state.local_marks))
+    respond('feature done')
+
+    log(get_refs())
+    log(import_commands)
+    refs = [re.match('import (.+)', cmd).group(1) for cmd in import_commands]
+    log(refs)
+
+    git_command = ['git', 'fast-export']
+    git_command.append('--import-marks={}'.format(state.remote_marks))
+    git_command.append('--export-marks={}'.format(state.remote_marks))
+    git_command.extend(['--refspec', state.refspec])
+    git_command.extend(refs)
+
+    log('execute:', git_command)
+    process = subprocess.Popen(git_command, stdout=subprocess.PIPE)
+    while True:
+        command = process.stdout.readline()
+        if not command:
+            break  # EOF.
+
+        respond(command.rstrip())
+
+    process.wait()
+    if process.returncode != 0:
+        log('fast-export returned', process.returncode)
+        sys.exit(process.returncode)
+
+    respond('done')
+
+def handle_export(state):
+    current_refs = get_refs()
+    log('current_refs: ', current_refs)
+
+    git_command = ['git', 'fast-import']
+    git_command.append('--quiet')
+    if state.options['force']:
+        git_command.append('--force')
+    git_command.append('--import-marks={}'.format(state.remote_marks))
+    git_command.append('--export-marks={}'.format(state.remote_marks))
+
+    log('execute:', git_command)
+    process = subprocess.Popen(git_command, stdin=subprocess.PIPE)
+    while True:
+        command = sys.stdin.readline()
+        if not command:
+            break  # EOF.
+
+        log('git to fast-import>', command.rstrip())
+        process.stdin.write(command)
+        process.stdin.flush()
+        if process.poll() is not None:
+            break  # Done.
+        if command.startswith('done'):
+            break  # Should be done...?
+
+    process.wait()
+    if process.returncode != 0:
+        log('fast-import returned', process.returncode)
+        sys.exit(process.returncode)
+
+    new_refs = get_refs()
+    log('new_refs: ', current_refs)
+    for (name, sha) in new_refs.iteritems():
+        if name not in current_refs:
+            respond('ok', name)
+        elif current_refs[name] != sha:
+            respond('ok', name)
+
+    respond()
+
+def main():
+    if len(sys.argv) != 3:
+        log('Usage:', sys.argv[0], '<REMOTE NAME> <URL>')
+        return
+
+    remote = sys.argv[1]
+    url = sys.argv[2]
+    log("Remote '{}'".format(remote))
+    log("URL '{}'".format(url))
+    state = remote_subtree_state(remote, url, os.environ['GIT_DIR'])
+
+    if not os.path.exists(state.data_dir):
+        os.makedirs(state.data_dir)
+    if not os.path.exists(state.remote_dir):
+        run_git(['clone', '--mirror', state.remote_url, state.remote_dir]) 
+
+    os.environ['GIT_DIR'] = state.remote_dir
+    log("Data dir '{}'".format(state.data_dir))
+    log("Remote dir '{}'".format(state.remote_dir))
+
+    touch(state.local_marks)
+    touch(state.remote_marks)
+
+    # Pull in changes from the remote repository.
+    run_git(['remote', 'update'])
+
+    while True:
+        command = sys.stdin.readline()
+        if not command:
+            break  # EOF.
+
+        log("git> {}".format(command.rstrip()))
+
+        if command.startswith('capabilities'):
+            handle_capabilities(state)
+        elif command.startswith('option'):
+            handle_option(state, command)
+        elif command.startswith('list'):
+            handle_list(state, command)
+        elif command.startswith('import'):
+            # Consume all 'import' commands in the batch.
+            import_commands = []
+            while command and command != '\n':
+                import_commands.append(command)
+                command = sys.stdin.readline()
+
+            handle_import(state, import_commands)
+        elif command.startswith('export'):
+            handle_export(state)
+        elif command == '\n':
+            continue
+        else:
+            log("Unknown git remote command '{}'".format(command))
+            sys.exit(1)
+
+    # Push out changes to the remote repository.
+    run_git(['push'])
+
+if __name__ == "__main__":
+    main()
