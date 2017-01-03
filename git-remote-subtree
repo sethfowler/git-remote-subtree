@@ -6,24 +6,6 @@ import re
 import subprocess
 import sys
 
-class remote_subtree_state:
-    def __init__(self, remote, url, git_dir):
-        self.remote = remote
-        self.url = url
-        self.remote_url = url
-        self.data_dir = os.path.join(git_dir, 'remote-subtree', remote)
-        self.remote_dir = os.path.join(self.data_dir, remote + '.git')
-        self.refspec = 'refs/heads/*:refs/remote-subtree/{}/*'.format(remote)
-        self.local_marks = os.path.join(self.data_dir, 'local.marks')
-        self.remote_marks = os.path.join(self.data_dir, 'remote.marks')
-        self.options = {
-            'verbosity': 1,
-            'progress': True,
-            'dryrun': False,
-            'force': False,
-            'cloning': False
-        }
-
 def touch(filename):
     with open(filename, 'a'):
         pass
@@ -66,6 +48,54 @@ def get_refs():
         refs[ref['name']] = ref['sha']
 
     return refs
+
+def parse_url(url):
+    # Try the full syntax.
+    url_match = re.match('(?P<graft_dir>.+)'+
+                         '::on::(?P<base_ref>.+)' +
+                         '::from::(?P<remote_ref>.+)' +
+                         '::at::(?P<remote_url>.+)',
+                         url)
+    if url_match:
+        return url_match.groupdict()
+
+    # Try the simplified syntax.
+    url_match = re.match('(?P<graft_dir>.+)'+
+                         '::on::(?P<base_ref>.+)' +
+                         '::from::(?P<remote_url>.+)',
+                         url)
+    if url_match:
+        parsed_url = url_match.groupdict()
+        parsed_url['remote_ref'] = parsed_url['base_ref']
+        return parsed_url
+
+    # Parsing failed; nothing we can do but bail.
+    log("Could not parse URL '{}'".format(url))
+    sys.exit(1)
+    parsed_url = url_match.groupdict()
+
+class remote_subtree_state:
+    def __init__(self, remote, url, git_dir):
+        parsed_url = parse_url(url)
+
+        self.remote = remote
+        self.url = url
+        self.graft_dir = parsed_url['graft_dir']
+        self.base_ref = parsed_url['base_ref']
+        self.remote_ref = parsed_url['remote_ref']
+        self.remote_url = parsed_url['remote_url']
+        self.data_dir = os.path.join(git_dir, 'remote-subtree', remote)
+        self.remote_dir = os.path.join(self.data_dir, remote + '.git')
+        self.refspec = 'refs/heads/*:refs/remote-subtree/{}/*'.format(remote)
+        self.local_marks = os.path.join(self.data_dir, 'local.marks')
+        self.remote_marks = os.path.join(self.data_dir, 'remote.marks')
+        self.options = {
+            'verbosity': 1,
+            'progress': True,
+            'dryrun': False,
+            'force': False,
+            'cloning': False
+        }
 
 def handle_capabilities(state):
     respond('import')
@@ -187,17 +217,22 @@ def main():
     log("URL '{}'".format(url))
     state = remote_subtree_state(remote, url, os.environ['GIT_DIR'])
 
+    log("Data dir '{}'".format(state.data_dir))
+    log("Remote dir '{}'".format(state.remote_dir))
+    log("Graft dir '{}'".format(state.graft_dir))
+    log("Base ref '{}'".format(state.base_ref))
+    log("Remote ref '{}'".format(state.remote_ref))
+    log("Remote URL '{}'".format(state.remote_url))
+
     if not os.path.exists(state.data_dir):
         os.makedirs(state.data_dir)
     if not os.path.exists(state.remote_dir):
         run_git(['clone', '--mirror', state.remote_url, state.remote_dir]) 
 
-    os.environ['GIT_DIR'] = state.remote_dir
-    log("Data dir '{}'".format(state.data_dir))
-    log("Remote dir '{}'".format(state.remote_dir))
-
     touch(state.local_marks)
     touch(state.remote_marks)
+
+    os.environ['GIT_DIR'] = state.remote_dir
 
     # Pull in changes from the remote repository.
     run_git(['remote', 'update'])

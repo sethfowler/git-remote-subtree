@@ -26,19 +26,19 @@ for matching commits.
 Say the user sets up a remote like so:
 
 ```
-git remote add subRepo subtree::subRepoDir::superRepo/branch::http://example.com/normalRepo
+git remote add subRepo subtree::subRepoDir::on::branch::from::http://example.com/normalRepo
 ```
 
 This creates a git remote called `subRepo` which wraps a normal git repo at
-`http://example.com/normalRepo`. If you fetch a branch `subRepo/subBranch`, what
-you get is `normalRepo/subBranch`, but it is as if all of the files are moved
-into a single top-level directory `subRepoDir/`, and `subRepoDir` is grafted
-into the tree at `superRepo/branch`. If `subRepoDir` already exists in
-`superRepo/branch`, the effect is as if its existing contents were replaced by
-the contents of `normalRepo/subBranch`. If `subRepoDir` already exists in
-`superRepo/branch` and *the contents are exactly the same*, then
-`subRepo/subBranch` will have the same SHA as `superRepo/branch`, and pulling
-one into the other will be a no-op.
+`http://example.com/normalRepo`. The ref `subRepo/branch` contains the same
+content as `normalRepo/branch`, but it is as if all of the files in `normalRepo`
+are moved into a single top-level directory `subRepoDir/`, and `subRepoDir` is
+grafted into the same tree as all the other content at `superRepo/branch`. If
+`subRepoDir` already exists in `superRepo/branch`, the effect is as if its
+existing contents were replaced by the contents of `normalRepo/subBranch`. If
+`subRepoDir` already exists in `superRepo/branch` and *the contents are exactly
+the same*, then `subRepo/subBranch` will have the same SHA as
+`superRepo/branch`, and pulling one into the other will be a no-op.
 
 Similarly, pushing from `superRepo/branch` to `subRepo/subBranch` behaves as if
 the contents of `subRepoDir` were at the top level, and everything else was
