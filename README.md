@@ -1,7 +1,7 @@
 # git-remote-subtree
 
-A git remote helper that allows you to treat a remote branch as if it were a
-copy of a local branch that differed only in the contents of one subtree.
+An alternative to git submodules and subtrees. Subrepos appear as normal remotes
+which differ from your main repository only in the contents of one subdirectory.
 
 The idea is that hide the functionality of `git-subtree` behind a protocol which
 works transparently, doesn't pollute the commit history of the repo, and doesn't
