@@ -72,7 +72,6 @@ def parse_url(url):
     # Parsing failed; nothing we can do but bail.
     log("Could not parse URL '{}'".format(url))
     sys.exit(1)
-    parsed_url = url_match.groupdict()
 
 class remote_subtree_state:
     def __init__(self, remote, url, git_dir):
