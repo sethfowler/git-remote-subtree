@@ -105,18 +105,21 @@ def handle_capabilities(state):
     respond('*export-marks', state.local_marks)
     respond()
 
+def as_bool(string):
+    return True if string == 'true' else False
+
 def handle_option(state, command):
     option = re.match('option (?P<key>\w+) (?P<value>\w+)', command).groupdict()
     if option['key'] == 'verbosity':
         state.options['verbosity'] = int(option['value'])
     elif option['key'] == 'progress':
-        state.options['progress'] = True if option['value'] == 'true' else False
+        state.options['progress'] = as_bool(option['value'])
     elif option['key'] == 'dry-run':
-        state.options['dry-run'] = True if option['value'] == 'true' else False
+        state.options['dry-run'] = as_bool(option['value'])
     elif option['key'] == 'force':
-        state.options['force'] = True if option['value'] == 'true' else False
+        state.options['force'] = as_bool(option['value'])
     elif option['key'] == 'cloning':
-        state.options['cloning'] = True if option['value'] == 'true' else False
+        state.options['cloning'] = as_bool(option['value'])
     else:
         respond('unsupported')
         return
